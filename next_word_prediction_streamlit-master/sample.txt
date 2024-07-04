@@ -1,0 +1,37 @@
+import streamlit as st
+import torch
+from transformers import BertTokenizer, BertForMaskedLM
+
+
+@st.cache_resource
+def load_model():
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model = BertForMaskedLM.from_pretrained('bert-base-uncased').eval()
+    return tokenizer, model
+
+def get_prediction(text, tokenizer, model, top_k=5):
+    text = text + ' ' + tokenizer.mask_token
+    inputs = tokenizer.encode_plus(text, return_tensors='pt')
+    mask_token_index = torch.where(inputs['input_ids'] == tokenizer.mask_token_id)[1]
+    with torch.no_grad():
+        outputs = model(**inputs)
+    logits = outputs.logits
+    mask_token_logits = logits[0, mask_token_index, :]
+    top_tokens = torch.topk(mask_token_logits, top_k, dim=1).indices[0].tolist()
+    predictions = [tokenizer.decode([token]) for token in top_tokens]
+    return predictions
+
+
+st.title("Next Word Prediction with BERT")
+st.sidebar.title("Settings")
+
+top_k = st.sidebar.slider("Number of predictions", 1, 10, 5)
+input_text = st.text_input("Enter your text here:")
+
+tokenizer, model = load_model()
+
+if input_text:
+    predictions = get_prediction(input_text, tokenizer, model, top_k=top_k)
+    st.write("Predicted next words:")
+    for i, prediction in enumerate(predictions):
+        st.write(f"{i+1}. {prediction}")
